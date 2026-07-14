@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         可画 AI 设计助手
 // @namespace    https://github.com/xiaowang4588/canva_helper-script
-// @version      1.0.0
+// @version      1.0.1
 // @description  为可画(Canva)网页端注入 AI 辅助面板：文案生成、设计建议、AI 图片生成、智能配图。🚀 自动从 GitHub CDN 拉取最新代码，安装一次永久更新。
 // @author       xiaowang4588
 // @license      MIT

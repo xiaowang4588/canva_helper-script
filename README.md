@@ -159,6 +159,20 @@ A: 目前支持 OpenAI / Anthropic / Stability AI。欢迎提交 PR 添加新服
 
 ---
 
+## 📋 更新日志
+
+### v1.0.1 (2026-07-14)
+
+- 🐛 **修复**：SPA 页面切换后面板消失的 bug。定时器从 `window.load` 事件改为 `init()` 后立即启动
+- 🐛 **修复**：优化 `visibilitychange` 定时器管理，避免重复创建
+
+### v1.0.0 (2026-07-14)
+
+- 🎉 首次发布：文案生成、设计建议、AI 图片生成、智能配图
+- 支持 OpenAI / Anthropic Claude / Stability AI / Unsplash
+
+---
+
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
