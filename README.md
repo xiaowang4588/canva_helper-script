@@ -40,11 +40,25 @@
 | Firefox | [Tampermonkey - Firefox Add-ons](https://addons.mozilla.org/firefox/addon/tampermonkey/) |
 | Safari | [Tampermonkey - Mac App Store](https://apps.apple.com/app/tampermonkey/id1482490089) |
 
-### 第二步：安装脚本
+### 第二步：安装脚本（三选一）
 
-> 🔗 **[点此一键安装](https://greasyfork.org)**（GreasyFork 链接，发布后更新）
+#### 🔗 方式一：直接链接安装（推荐，无需等待）
 
-或在 Tampermonkey 中手动导入 `loader/canva-ai-loader.user.js`。
+在浏览器地址栏打开以下链接，Tampermonkey 自动弹出安装提示：
+
+```
+https://raw.githubusercontent.com/xiaowang4588/canva_helper-script/master/loader/canva-ai-loader.user.js
+```
+
+#### 🛒 方式二：GreasyFork（审核中）
+
+> 🔗 [点此安装](https://greasyfork.org)（链接待审核通过后更新）
+
+#### 🔧 方式三：手动导入
+
+1. 点击 Tampermonkey 图标 → **管理面板**
+2. 点击 **⚙ 实用工具** → **从 URL 安装**
+3. 粘贴上面的 Raw 链接 → 安装
 
 ### 第三步：配置 API Key
 
