@@ -1941,34 +1941,34 @@
     }
   }
 
-  // 使用 MutationObserver 和定时检查双重保障
+  // 启动定时检查（必须在 init() 之前声明）
+  function startCheckTimer(interval) {
+    if (initCheckTimer) clearInterval(initCheckTimer);
+    initCheckTimer = setInterval(ensurePanelExists, interval);
+  }
+
+  // 初始加载 & 启动定时器
   if (document.body) {
     init();
+    startCheckTimer(2000);
   } else {
-    // 等待 body 可用
     const bodyObserver = new MutationObserver(() => {
       if (document.body) {
         bodyObserver.disconnect();
         init();
+        startCheckTimer(2000);
       }
     });
     bodyObserver.observe(document.documentElement, { childList: true, subtree: true });
   }
 
-  // 定时检查确保面板在 SPA 导航后仍然存在
-  window.addEventListener('load', () => {
-    initCheckTimer = setInterval(ensurePanelExists, 2000);
-  });
-
-  // 页面隐藏时降低频率
+  // 页面隐藏时降低检查频率，恢复时立即检查
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      if (initCheckTimer) clearInterval(initCheckTimer);
-      initCheckTimer = setInterval(ensurePanelExists, 10000);
+      startCheckTimer(10000);
     } else {
-      if (initCheckTimer) clearInterval(initCheckTimer);
-      initCheckTimer = setInterval(ensurePanelExists, 2000);
-      ensurePanelExists();
+      startCheckTimer(2000);
+      ensurePanelExists(); // 恢复时立即检查一次
     }
   });
 
