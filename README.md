@@ -177,6 +177,8 @@ A: 目前支持 OpenAI / Anthropic / Stability AI。欢迎提交 PR 添加新服
 
 欢迎提交 Issue 和 Pull Request！
 
+> 📖 详细的开发指南（架构、模块说明、如何新增 AI 服务等）请阅读 **[DEVELOPER.md](DEVELOPER.md)**
+
 ```bash
 git clone https://github.com/xiaowang4588/canva_helper-script.git
 cd canva-ai-assistant
