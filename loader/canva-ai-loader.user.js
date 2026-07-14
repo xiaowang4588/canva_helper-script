@@ -43,9 +43,9 @@
 
   // ==================== CDN 地址 ====================
   // 主: GitHub Raw (可靠、不重定向)
-  const MAIN_URL = 'https://raw.githubusercontent.com/xiaowang4588/canva_helper-script/main/dist/canva-ai-assistant.js';
+  const MAIN_URL = 'https://raw.githubusercontent.com/xiaowang4588/canva_helper-script/master/dist/canva-ai-assistant.js';
   // 备用: jsDelivr CDN (国内可能更快，但有时会重定向)
-  const FALLBACK_URL = 'https://cdn.jsdelivr.net/gh/xiaowang4588/canva_helper-script@main/dist/canva-ai-assistant.js';
+  const FALLBACK_URL = 'https://cdn.jsdelivr.net/gh/xiaowang4588/canva_helper-script@master/dist/canva-ai-assistant.js';
 
   console.log('[CAA] 🚀 加载器启动 v1.0.1');
   console.log('[CAA] 主地址: GitHub Raw');
