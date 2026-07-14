@@ -2,8 +2,9 @@
   'use strict';
 
   // 防止重复加载（SPA 页面切换时）
-  if (window.__CAA_LOADED__) return;
-  window.__CAA_LOADED__ = true;
+  if (window.__CAA_LOADED_V2__) return;
+  window.__CAA_LOADED_V2__ = true;
+  console.log('[CAA] 完整代码开始执行...');
 
   // ==================== CSS 样式 ====================
   GM_addStyle(`
@@ -1899,6 +1900,8 @@
     // 避免重复注入
     if ($('#caa-panel')) return;
 
+    console.log('[CAA] init() 开始创建面板...');
+
     // 创建面板
     const panel = createPanel();
     document.body.appendChild(panel);
@@ -1929,6 +1932,8 @@
     // 注册 Tampermonkey 菜单命令
     GM_registerMenuCommand('切换 AI 面板 (显示/隐藏)', () => togglePanel());
     GM_registerMenuCommand('清空当前对话', () => clearCurrentChat());
+
+    console.log('[CAA] ✅ init() 完成，面板已创建');
   }
 
   // ==================== SPA 路由监听 ====================
@@ -1937,6 +1942,7 @@
 
   function ensurePanelExists() {
     if (!$('#caa-panel') && document.body) {
+      console.log('[CAA] 🔄 检测到面板缺失，重新创建...');
       init();
     }
   }

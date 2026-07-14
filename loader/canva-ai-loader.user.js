@@ -14,8 +14,9 @@
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
-// @connect      cdn.jsdelivr.net
 // @connect      raw.githubusercontent.com
+// @connect      cdn.jsdelivr.net
+// @connect      fastly.jsdelivr.net
 // @connect      api.openai.com
 // @connect      api.anthropic.com
 // @connect      api.stability.ai
@@ -26,67 +27,104 @@
 (function () {
   'use strict';
 
-  // 防止页面内重复加载
-  if (window.__CAA_LOADER_RUN__) return;
-  window.__CAA_LOADER_RUN__ = true;
+  // ==================== 去重 ====================
+  const LOADER_KEY = '__CAA_LOADER_V2__';
+  const LOADED_KEY = '__CAA_LOADED_V2__';
 
-  const CDN_URL = 'https://cdn.jsdelivr.net/gh/xiaowang4588/canva_helper-script@main/dist/canva-ai-assistant.js';
-  const FALLBACK_URL = 'https://raw.githubusercontent.com/xiaowang4588/canva_helper-script/main/dist/canva-ai-assistant.js';
+  // 每次页面会话只跑一次
+  if (window[LOADER_KEY]) return;
+  window[LOADER_KEY] = Date.now();
 
-  // 检查是否已注入完整代码
-  if (window.__CAA_LOADED__) return;
+  // 如果完整代码已加载（SPA 导航后可能已有），跳过
+  if (window[LOADED_KEY]) {
+    console.log('[CAA] 代码已加载，跳过');
+    return;
+  }
 
-  console.log('[可画AI助手] 🚀 正在从 CDN 加载最新代码...');
+  // ==================== CDN 地址 ====================
+  // 主: GitHub Raw (可靠、不重定向)
+  const MAIN_URL = 'https://raw.githubusercontent.com/xiaowang4588/canva_helper-script/main/dist/canva-ai-assistant.js';
+  // 备用: jsDelivr CDN (国内可能更快，但有时会重定向)
+  const FALLBACK_URL = 'https://cdn.jsdelivr.net/gh/xiaowang4588/canva_helper-script@main/dist/canva-ai-assistant.js';
 
-  GM_xmlhttpRequest({
-    method: 'GET',
-    url: CDN_URL,
-    timeout: 10000,
-    onload: function (resp) {
-      if (resp.status === 200 && resp.responseText) {
-        try {
-          eval(resp.responseText);
-          console.log('[可画AI助手] ✅ 加载成功');
-        } catch (e) {
-          console.error('[可画AI助手] ❌ 代码执行失败:', e);
-          tryFallback();
-        }
-      } else {
-        console.warn('[可画AI助手] ⚠️ CDN 返回异常，尝试备用地址...');
-        tryFallback();
-      }
-    },
-    onerror: function () {
-      console.warn('[可画AI助手] ⚠️ CDN 连接失败，尝试备用地址...');
-      tryFallback();
-    },
-    ontimeout: function () {
-      console.warn('[可画AI助手] ⚠️ CDN 超时，尝试备用地址...');
-      tryFallback();
-    },
-  });
+  console.log('[CAA] 🚀 加载器启动 v1.0.1');
+  console.log('[CAA] 主地址: GitHub Raw');
 
-  function tryFallback() {
+  // ==================== 加载并执行 ====================
+  let resolved = false;
+
+  function loadFrom(url, label) {
+    console.log('[CAA] 尝试从 ' + label + ' 加载...');
     GM_xmlhttpRequest({
       method: 'GET',
-      url: FALLBACK_URL,
-      timeout: 10000,
+      url: url,
+      timeout: 15000,
       onload: function (resp) {
-        if (resp.status === 200 && resp.responseText) {
+        if (resolved) return;
+        const text = (resp.responseText || resp.response || '').trim();
+        console.log('[CAA] ' + label + ' 响应: status=' + resp.status + ', 长度=' + text.length);
+
+        if (resp.status >= 200 && resp.status < 300 && text.length > 100) {
+          resolved = true;
           try {
-            eval(resp.responseText);
-            console.log('[可画AI助手] ✅ 从备用地址加载成功');
+            // 在 Tampermonkey 沙箱中执行，GM_* 全部可用
+            eval(text);
+            console.log('[CAA] ✅ 加载成功! (' + label + ')');
+            window[LOADED_KEY] = true;
           } catch (e) {
-            console.error('[可画AI助手] ❌ 备用地址也失败了:', e);
+            console.error('[CAA] ❌ eval 执行失败:', e.message);
+            console.error('[CAA] 堆栈:', e.stack);
+            showErrorBanner('代码执行失败: ' + e.message);
           }
         } else {
-          console.error('[可画AI助手] ❌ 所有加载方式均失败，请检查网络或访问 GitHub 获取帮助');
+          console.warn('[CAA] ⚠️ ' + label + ' 返回异常, status=' + resp.status + ', len=' + text.length);
         }
       },
-      onerror: function () {
-        console.error('[可画AI助手] ❌ 所有加载方式均失败');
+      onerror: function (err) {
+        console.warn('[CAA] ⚠️ ' + label + ' 网络错误:', err);
+      },
+      ontimeout: function () {
+        console.warn('[CAA] ⚠️ ' + label + ' 超时');
       },
     });
+  }
+
+  // 主地址 + 备用地址 竞速加载
+  loadFrom(MAIN_URL, 'GitHub Raw');
+
+  // 1.5 秒后如果主地址还没返回，启动备用
+  setTimeout(function () {
+    if (!resolved) {
+      console.log('[CAA] 主地址 1.5s 未响应，启动备用 CDN...');
+      loadFrom(FALLBACK_URL, 'jsDelivr');
+    }
+  }, 1500);
+
+  // ==================== 错误提示横幅 ====================
+  function showErrorBanner(msg) {
+    if (document.body) {
+      const banner = document.createElement('div');
+      banner.id = 'caa-error-banner';
+      banner.style.cssText = [
+        'position:fixed;top:0;left:0;right:0;z-index:2147483647;',
+        'background:#ff4444;color:#fff;padding:12px 16px;',
+        'font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;',
+        'text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3);',
+        'cursor:pointer;',
+      ].join('');
+      banner.textContent = '⚠️ 可画 AI 助手加载失败: ' + msg + ' — 点击重试';
+      banner.onclick = function () {
+        banner.remove();
+        resolved = false;
+        window[LOADER_KEY] = undefined;
+        window[LOADER_KEY] = Date.now();
+        loadFrom(MAIN_URL, 'GitHub Raw(重试)');
+        setTimeout(function () {
+          if (!resolved) loadFrom(FALLBACK_URL, 'jsDelivr(重试)');
+        }, 1500);
+      };
+      document.body.appendChild(banner);
+    }
   }
 
 })();
