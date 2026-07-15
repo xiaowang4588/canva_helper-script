@@ -26,6 +26,8 @@
 
 在设置中灵活配置，不同功能可路由到不同 AI。
 
+> ⚠️ **安全声明**：本脚本通过 CDN 自动加载最新代码。请确认你信任本仓库的维护者。如果你在意安全，建议 [Fork 仓库](https://github.com/xiaowang4588/canva_helper-script/fork) 后使用自己的版本。详见 [SECURITY.md](SECURITY.md)。
+
 ---
 
 ## 📦 一键安装
@@ -137,6 +139,8 @@ canva-ai-assistant/
 - **AI 请求直连官方 API**（`api.openai.com` / `api.anthropic.com`），不经过任何中间代理
 - **开源透明**：所有代码托管在 GitHub，可自行审查
 - 不会收集或上传你的设计数据
+
+> 📖 关于供应链安全（CDN 自动更新的风险与防护），详见 **[SECURITY.md](SECURITY.md)**
 
 ---
 
