@@ -581,6 +581,10 @@
         unsplash_key: this.get('unsplash_key', ''),
         primary_text_ai: this.get('primary_text_ai', 'openai'),
         primary_design_ai: this.get('primary_design_ai', 'openai'),
+        // 服务器模式
+        use_server: this.get('use_server', false),
+        server_url: this.get('server_url', ''),
+        server_token: this.get('server_token', ''),
       };
     },
   };
@@ -933,12 +937,206 @@
     });
   }
 
+  // ==================== 服务器模式 API 调用 ====================
+  // 当用户在设置中配置了服务器 URL 和 Token 时，走服务器中转。
+  // 优点：API Key 在服务端，更安全；有额度控制；国内网络优化。
+
+  /**
+   * 服务器流式聊天
+   * 用 GM_xmlhttpRequest 调用用户自己的服务器 /api/chat 端点，
+   * 服务器再转发到 AI（通过 one-api 等中转）
+   */
+  function streamServerChat(serverUrl, serverToken, model, messages, onToken, onDone, onError) {
+    const parser = new SSEParser();
+    let lastLength = 0;
+    let calledDone = false;
+
+    function processChunk(fullText) {
+      const delta = fullText.substring(lastLength);
+      lastLength = fullText.length;
+      if (!delta) return;
+      const events = parser.feed(delta);
+      for (const ev of events) {
+        if (ev.type === 'data' && ev.payload) {
+          // 服务器返回的是 OpenAI 兼容的 SSE 格式
+          const content = ev.payload.choices?.[0]?.delta?.content;
+          if (content) onToken(content);
+
+          // 服务器返回的错误
+          if (ev.payload.error) {
+            onError(new Error(ev.payload.error.message || '服务器错误'));
+            calledDone = true;
+          }
+        }
+      }
+    }
+
+    function finish() {
+      if (calledDone) return;
+      calledDone = true;
+      const remaining = parser.flush();
+      for (const ev of remaining) {
+        if (ev.type === 'data' && ev.payload) {
+          const content = ev.payload.choices?.[0]?.delta?.content;
+          if (content) onToken(content);
+        }
+      }
+      onDone();
+    }
+
+    const url = serverUrl.replace(/\/+$/, '') + '/api/chat';
+
+    console.log('[CAA] 🌐 服务器模式: ' + url);
+
+    GM_xmlhttpRequest({
+      method: 'POST',
+      url: url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + serverToken,
+      },
+      data: JSON.stringify({
+        model: model,
+        messages: messages,
+        feature: 'chat',
+      }),
+      onprogress: function (resp) {
+        const text = resp.responseText || resp.response || '';
+        if (text) processChunk(text);
+      },
+      onreadystatechange: function (resp) {
+        if (resp.readyState === 4) {
+          const text = resp.responseText || resp.response || '';
+          if (text) processChunk(text);
+        }
+      },
+      onload: function (resp) {
+        const text = resp.responseText || resp.response || '';
+        if (text) processChunk(text);
+
+        // 检查 HTTP 错误
+        if (resp.status >= 400) {
+          finish();
+          if (resp.status === 401) {
+            onError(new Error('服务器认证失败，请检查 Token'));
+          } else if (resp.status === 429) {
+            // 解读服务器的额度耗尽或限流响应
+            try {
+              const errBody = JSON.parse(text);
+              onError(new Error(errBody.message || '额度已用完或请求太频繁'));
+            } catch (_) {
+              onError(new Error('请求被限制 (HTTP ' + resp.status + ')'));
+            }
+          } else {
+            onError(new Error('服务器返回错误 (HTTP ' + resp.status + ')'));
+          }
+          return;
+        }
+
+        finish();
+      },
+      onerror: function (err) {
+        finish();
+        onError(new Error('无法连接到服务器，请检查服务器地址'));
+      },
+      ontimeout: function () {
+        finish();
+        onError(new Error('服务器响应超时'));
+      },
+      timeout: 120000,
+    });
+  }
+
+  /**
+   * 服务器图片生成
+   * 非流式调用 /api/image，返回 JSON { urls: [...] }
+   */
+  function generateServerImage(serverUrl, serverToken, prompt, size) {
+    const url = serverUrl.replace(/\/+$/, '') + '/api/image';
+
+    console.log('[CAA] 🌐 服务器图片: ' + url);
+
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + serverToken,
+        },
+        data: JSON.stringify({
+          prompt: prompt,
+          size: size || '1024x1024',
+        }),
+        onload: function (resp) {
+          try {
+            const data = JSON.parse(resp.responseText);
+            if (resp.status >= 400) {
+              reject(new Error(data.message || data.error || '图片生成失败 (HTTP ' + resp.status + ')'));
+            } else if (data.urls && data.urls.length > 0) {
+              resolve(data.urls);
+            } else {
+              reject(new Error('服务器未返回图片'));
+            }
+          } catch (_) {
+            reject(new Error('服务器返回格式错误 (HTTP ' + resp.status + ')'));
+          }
+        },
+        onerror: function () {
+          reject(new Error('无法连接到服务器'));
+        },
+        timeout: 60000,
+      });
+    });
+  }
+
+  /**
+   * 查询服务器上的剩余额度
+   * GET /api/user/quota
+   */
+  function fetchServerQuota(serverUrl, serverToken) {
+    const url = serverUrl.replace(/\/+$/, '') + '/api/user/quota';
+
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: url,
+        headers: {
+          'Authorization': 'Bearer ' + serverToken,
+        },
+        onload: function (resp) {
+          try {
+            const data = JSON.parse(resp.responseText);
+            resolve(data);
+          } catch (_) {
+            reject(new Error('无法解析额度信息'));
+          }
+        },
+        onerror: function () {
+          reject(new Error('无法连接到服务器'));
+        },
+        timeout: 10000,
+      });
+    });
+  }
+
   // ==================== 统一的流式聊天调用 ====================
-  function streamChat(service, apiKey, model, messages, onToken, onDone, onError) {
+  /**
+   * 统一流式聊天入口
+   *
+   * @param {string} service - 'openai' | 'anthropic' | 'server'
+   * @param {string} apiKey   - 直连模式的 API Key；服务器模式时为 serverToken
+   * @param {string} model    - 模型 ID
+   * @param {Array}  messages - 消息数组
+   * @param {string} [serverUrl] - 服务器地址（仅 server 模式需要）
+   */
+  function streamChat(service, apiKey, model, messages, onToken, onDone, onError, serverUrl) {
     if (service === 'openai') {
       streamOpenAIChat(apiKey, model, messages, onToken, onDone, onError);
     } else if (service === 'anthropic') {
       streamClaudeChat(apiKey, model, messages, onToken, onDone, onError);
+    } else if (service === 'server') {
+      streamServerChat(serverUrl, apiKey, model, messages, onToken, onDone, onError);
     } else {
       onError(new Error(`未知的 AI 服务: ${service}`));
     }
@@ -1208,13 +1406,24 @@
 
     // 获取设置
     const settings = Storage.defaults();
-    const service = settings.primary_text_ai;
-    const apiKey = service === 'openai' ? settings.openai_key : settings.anthropic_key;
-    const model = service === 'openai' ? settings.openai_model : settings.anthropic_model;
+    // 检测服务器模式
+    const useServer = settings.use_server && settings.server_url && settings.server_token;
 
-    if (!apiKey) {
-      showToast('请先在「设置」中配置 API Key');
-      return;
+    let service, apiKey, model;
+
+    if (useServer) {
+      service = 'server';
+      apiKey = settings.server_token;
+      model = 'gpt-4o'; // 服务器端 one-api 统一管理模型
+    } else {
+      service = settings.primary_text_ai;
+      apiKey = service === 'openai' ? settings.openai_key : settings.anthropic_key;
+      model = service === 'openai' ? settings.openai_model : settings.anthropic_model;
+
+      if (!apiKey) {
+        showToast('请先在「设置」中配置 API Key 或启用服务器模式');
+        return;
+      }
     }
 
     // 清空并显示用户输入
@@ -1271,7 +1480,8 @@
         removeLoadingIndicator(loading);
         if (streamingEl) streamingEl.innerHTML = `<span style="color:var(--caa-danger)">❌ ${err.message}</span>`;
         sendBtn.disabled = false;
-      }
+      },
+      useServer ? settings.server_url : undefined
     );
   }
 
@@ -1324,13 +1534,23 @@
     if (!question) { showToast('请描述你的设计问题'); return; }
 
     const settings = Storage.defaults();
-    const service = settings.primary_design_ai;
-    const apiKey = service === 'openai' ? settings.openai_key : settings.anthropic_key;
-    const model = service === 'openai' ? settings.openai_model : settings.anthropic_model;
+    const useServer = settings.use_server && settings.server_url && settings.server_token;
 
-    if (!apiKey) {
-      showToast('请先在「设置」中配置 API Key');
-      return;
+    let service, apiKey, model;
+
+    if (useServer) {
+      service = 'server';
+      apiKey = settings.server_token;
+      model = 'gpt-4o';
+    } else {
+      service = settings.primary_design_ai;
+      apiKey = service === 'openai' ? settings.openai_key : settings.anthropic_key;
+      model = service === 'openai' ? settings.openai_model : settings.anthropic_model;
+
+      if (!apiKey) {
+        showToast('请先在「设置」中配置 API Key 或启用服务器模式');
+        return;
+      }
     }
 
     if (contentEl.querySelector('.caa-hint')) contentEl.innerHTML = '';
@@ -1384,7 +1604,8 @@
         removeLoadingIndicator(loading);
         if (streamingEl) streamingEl.innerHTML = `<span style="color:var(--caa-danger)">❌ ${err.message}</span>`;
         sendBtn.disabled = false;
-      }
+      },
+      useServer ? settings.server_url : undefined
     );
   }
 
@@ -1480,22 +1701,31 @@
 
     try {
       if (mode === 'generate') {
-        // AI 图片生成
-        const service = settings.image_service;
-        if (service === 'openai' && !settings.openai_key) {
-          throw new Error('请先在设置中配置 OpenAI API Key');
-        }
-        if (service === 'stability' && !settings.stability_key) {
-          throw new Error('请先在设置中配置 Stability AI API Key');
-        }
+        // 检测服务器模式
+        const useServer = settings.use_server && settings.server_url && settings.server_token;
 
         let urls = [];
-        if (service === 'openai') {
+        if (useServer) {
+          // 服务器模式：由服务器中转调用 DALL-E
           const size = sizeSelect ? sizeSelect.value : '1024x1024';
-          urls = await generateDalleImage(settings.openai_key, prompt, size);
-        } else if (service === 'stability') {
-          const [w, h] = (sizeSelect?.value || '1024x1024').split('x').map(Number);
-          urls = await generateStabilityImage(settings.stability_key, prompt, w, h);
+          urls = await generateServerImage(settings.server_url, settings.server_token, prompt, size);
+        } else {
+          // 直连模式
+          const service = settings.image_service;
+          if (service === 'openai' && !settings.openai_key) {
+            throw new Error('请先在设置中配置 OpenAI API Key 或启用服务器模式');
+          }
+          if (service === 'stability' && !settings.stability_key) {
+            throw new Error('请先在设置中配置 Stability AI API Key 或启用服务器模式');
+          }
+
+          if (service === 'openai') {
+            const size = sizeSelect ? sizeSelect.value : '1024x1024';
+            urls = await generateDalleImage(settings.openai_key, prompt, size);
+          } else if (service === 'stability') {
+            const [w, h] = (sizeSelect?.value || '1024x1024').split('x').map(Number);
+            urls = await generateStabilityImage(settings.stability_key, prompt, w, h);
+          }
         }
 
         loading.remove();
@@ -1611,6 +1841,33 @@
 
     const settings = Storage.defaults();
     contentEl.innerHTML = '';
+
+    // ---- 服务器模式（推荐） ----
+    contentEl.appendChild(createSettingsSection('🌐 服务器模式 (推荐)', [
+      createElement('div', { className: 'caa-settings-field' }, [
+        createElement('label', { textContent: '启用服务器中转' }),
+        createElement('select', { id: 'caa-setting-use-server' }, [
+          createElement('option', { value: '0', textContent: '❌ 直连模式（自己配 Key）',
+            ...(settings.use_server ? {} : { selected: 'selected' }) }),
+          createElement('option', { value: '1', textContent: '✅ 服务器模式（API Key 在服务端，更安全）',
+            ...(settings.use_server ? { selected: 'selected' } : {}) }),
+        ]),
+      ]),
+      createSettingsField('服务器地址', 'caa-setting-server-url', 'text', settings.server_url,
+        'https://your-server.com'),
+      createSettingsField('用户 Token', 'caa-setting-server-token', 'password', settings.server_token,
+        '从管理员处获取'),
+      createElement('button', {
+        className: 'caa-test-btn',
+        textContent: '🔌 测试连接 & 查额度',
+        id: 'caa-test-server',
+        onClick: () => testServerConnection(),
+      }),
+      createElement('div', {
+        id: 'caa-server-quota-info',
+        style: { fontSize: '12px', color: 'var(--caa-text-secondary)', marginTop: '6px', display: 'none' },
+      }),
+    ]));
 
     // OpenAI 配置
     contentEl.appendChild(createSettingsSection('🔵 OpenAI', [
@@ -1729,6 +1986,10 @@
     Storage.set('image_service', getVal('caa-setting-image-service'));
     Storage.set('stability_key', getVal('caa-setting-stability-key'));
     Storage.set('unsplash_key', getVal('caa-setting-unsplash-key'));
+    // 服务器模式
+    Storage.set('use_server', getVal('caa-setting-use-server') === '1');
+    Storage.set('server_url', getVal('caa-setting-server-url'));
+    Storage.set('server_token', getVal('caa-setting-server-token'));
 
     showToast('✅ 设置已保存');
 
@@ -1841,6 +2102,48 @@
         timeout: 15000,
       });
     });
+  }
+
+  /**
+   * 测试服务器连接 & 显示剩余额度
+   */
+  async function testServerConnection() {
+    const btn = $('#caa-test-server');
+    const quotaInfo = $('#caa-server-quota-info');
+    const urlInput = $('#caa-setting-server-url');
+    const tokenInput = $('#caa-setting-server-token');
+
+    const serverUrl = urlInput ? urlInput.value.trim() : Storage.defaults().server_url;
+    const serverToken = tokenInput ? tokenInput.value.trim() : Storage.defaults().server_token;
+
+    if (!serverUrl || !serverToken) { showToast('请先填写服务器地址和 Token'); return; }
+
+    btn.textContent = '⏳ 测试中...';
+    btn.className = 'caa-test-btn';
+
+    try {
+      const quota = await fetchServerQuota(serverUrl, serverToken);
+      btn.textContent = '✅ 连接成功';
+      btn.className = 'caa-test-btn caa-test-ok';
+
+      if (quotaInfo) {
+        quotaInfo.style.display = 'block';
+        quotaInfo.innerHTML = `
+          📊 免费额度: ${quota.quota_daily_remaining || '?'}/${quota.quota_daily_total || '?'} 次/天
+          | 🌟 充值额度: ${quota.quota_extra_remaining || 0} 次
+          | 🕐 每日 ${quota.reset_at || '00:00'} 重置
+        `;
+      }
+    } catch (e) {
+      btn.textContent = '❌ ' + e.message;
+      btn.className = 'caa-test-btn caa-test-fail';
+      if (quotaInfo) quotaInfo.style.display = 'none';
+    }
+
+    setTimeout(() => {
+      btn.textContent = '🔌 测试连接 & 查额度';
+      btn.className = 'caa-test-btn';
+    }, 5000);
   }
 
   // ==================== Tab 切换 & 面板控制 ====================
