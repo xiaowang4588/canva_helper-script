@@ -1330,10 +1330,10 @@
 
     // Tabs
     const tabBar = createElement('div', { className: 'caa-tabs' }, [
-      createTab('📝', '文案', 'copy'),
+      createTab('<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="18" height="18"><path d="M651.9 596a152 152 0 0 1-45.2 31.8l-133.1 61.4a86.6 86.6 0 0 1-36.3 8.1 86.2 86.2 0 0 1-79.5-119.3c22.7-56.3 46.6-114.6 58.8-144.4a152.8 152.8 0 0 1 33-49.8L699.2 133H244.6a115.9 115.9 0 0 0-115.9 116.2v566.5A115.9 115.9 0 0 0 244.6 932h540.7a115.9 115.9 0 0 0 115.8-116.1V347z" fill="currentColor"/><path d="M850.3 128.7a50.5 50.5 0 0 0-71.2 0l-293.2 291.9a100.6 100.6 0 0 0-22 33.1c-12.1 29.7-35.8 88-58.6 144.2a34.8 34.8 0 0 0 46.9 44.6l133.1-61.4a100.9 100.9 0 0 0 30-21.1L912 261.2a50.5 50.5 0 0 0-.3-71.7z" fill="currentColor"/></svg>', '文案', 'copy'),
       createTab('💡', '建议', 'design'),
       createTab('🎨', '图片', 'image'),
-      createTab('⚙', '设置', 'settings'),
+      createTab('<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="18" height="18"><path d="M507.1 356.1a154.2 154.2 0 1 0 154.2 154.3 154.4 154.4 0 0 0-154.2-154.3z" fill="currentColor"/><path d="M940.3 455.7l-168.9-293a109.5 109.5 0 0 0-94.9-54.8H337.9a109.6 109.6 0 0 0-94.9 54.8L73.9 455.7a109.6 109.6 0 0 0 0 109.6l169 293a109.5 109.5 0 0 0 94.9 54.7h338.3a109.4 109.4 0 0 0 94.9-54.7l169-293a109.4 109.4 0 0 0 .2-109.5zm-433.2 249.9a195.2 195.2 0 1 1 195.2-195.2 195.4 195.4 0 0 1-195.2 195.2z" fill="currentColor"/></svg>', '设置', 'settings'),
     ]);
 
     // Content
@@ -1351,12 +1351,20 @@
   }
 
   function createTab(icon, label, id) {
+    // 支持 emoji 字符串和 SVG 字符串两种 icon 格式
+    const isSvg = typeof icon === 'string' && icon.charAt(0) === '<';
+    const iconAttrs = { className: 'caa-tab-icon' };
+    if (isSvg) {
+      iconAttrs.innerHTML = icon;
+    } else {
+      iconAttrs.textContent = icon;
+    }
     return createElement('button', {
       className: 'caa-tab',
       'data-tab': id,
       onClick: () => switchTab(id),
     }, [
-      createElement('span', { className: 'caa-tab-icon', textContent: icon }),
+      createElement('span', iconAttrs),
       createElement('span', { textContent: label }),
     ]);
   }
