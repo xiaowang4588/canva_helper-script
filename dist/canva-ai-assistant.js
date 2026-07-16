@@ -1316,7 +1316,10 @@
     // Header
     const header = createElement('div', { className: 'caa-header' }, [
       createElement('div', { className: 'caa-header-title' }, [
-        createElement('span', { textContent: '🤖' }),
+        createElement('span', {
+          style: { width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', flexShrink: '0' },
+          innerHTML: '<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="22" height="22" style="display:block"><path d="M469.3 42.7v42.6H298.7a128 128 0 0 0-128 128v128a213.3 213.3 0 0 0 213.3 213.4h256a213.3 213.3 0 0 0 213.4-213.4V213.3a128 128 0 0 0-128-128H554.7V42.7h-85.4zM256 213.3a42.7 42.7 0 0 1 42.7-42.6h426.6a42.7 42.7 0 0 1 42.7 42.6v128a128 128 0 0 1-128 128H384a128 128 0 0 1-128-128v-128zm149.3 170.7a64 64 0 1 0 0-128 64 64 0 0 0 0 128zm213.4 0a64 64 0 1 0 0-128 64 64 0 0 0 0 128zM256 938.7a256 256 0 0 1 512 0h85.3a341.3 341.3 0 1 0-682.6 0h85.3z" fill="currentColor"/></svg>'
+        }),
         createElement('span', { textContent: 'AI 设计助手' }),
       ]),
       createElement('div', { className: 'caa-header-actions' }, [
