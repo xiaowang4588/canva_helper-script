@@ -14,13 +14,6 @@
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
-// @connect      raw.githubusercontent.com
-// @connect      cdn.jsdelivr.net
-// @connect      fastly.jsdelivr.net
-// @connect      api.openai.com
-// @connect      api.anthropic.com
-// @connect      api.stability.ai
-// @connect      api.unsplash.com
 // @run-at       document-idle
 // ==/UserScript==
 
