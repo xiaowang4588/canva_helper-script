@@ -679,6 +679,7 @@
         image_service: this.get('image_service', 'openai'),
         gpt_image_key: this.get('gpt_image_key', ''),
         gpt_image_url: this.get('gpt_image_url', 'https://api.openai.com/v1'),
+        gpt_image_model: this.get('gpt_image_model', 'gpt-image-2'),
         stability_key: this.get('stability_key', ''),
         unsplash_key: this.get('unsplash_key', ''),
         primary_text_ai: this.get('primary_text_ai', 'openai'),
@@ -962,13 +963,14 @@
    *
    * @param {string} apiKey  - 中转站 API Key
    * @param {string} apiUrl  - 中转站地址，如 https://your-relay.com/v1
+   * @param {string} model   - 模型名，如 gpt-image-2, gpt-5.4
    * @param {string} prompt  - 图片描述
    * @param {string} size    - 图片尺寸
    */
-  function generateGptImage2(apiKey, apiUrl, prompt, size = '1024x1024') {
+  function generateGptImage2(apiKey, apiUrl, model, prompt, size = '1024x1024') {
     const url = (apiUrl || 'https://api.openai.com/v1').replace(/\/+$/, '') + '/chat/completions';
 
-    console.log('[CAA] GPT-image-2 chat: ' + url);
+    console.log('[CAA] GPT-image-2 chat: ' + url + ' model=' + model);
 
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
@@ -979,7 +981,7 @@
           'Authorization': `Bearer ${apiKey}`,
         },
         data: JSON.stringify({
-          model: 'gpt-image-2',
+          model: model || 'gpt-image-2',
           messages: [
             {
               role: 'user',
@@ -1942,7 +1944,7 @@
             const [w, h] = size.split('x').map(Number);
             urls = await generateStabilityImage(settings.stability_key, prompt, w, h);
           } else if (service === 'gpt-image-2') {
-            urls = await generateGptImage2(settings.gpt_image_key, settings.gpt_image_url, prompt, size);
+            urls = await generateGptImage2(settings.gpt_image_key, settings.gpt_image_url, settings.gpt_image_model, prompt, size);
           }
         }
 
@@ -2140,7 +2142,9 @@
       createSettingsField('GPT-image-2 Key (调试用)', 'caa-setting-gpt-image-key', 'password', settings.gpt_image_key,
         'sk-...'),
       createSettingsField('GPT-image-2 API 地址', 'caa-setting-gpt-image-url', 'text', settings.gpt_image_url,
-        'https://your-relay.com/v1'),
+        'https://ruoli.dev/v1'),
+      createSettingsField('GPT-image-2 模型名', 'caa-setting-gpt-image-model', 'text', settings.gpt_image_model,
+        'gpt-image-2'),
     ]));
 
     // Unsplash 配置
@@ -2211,6 +2215,7 @@
     Storage.set('stability_key', getVal('caa-setting-stability-key'));
     Storage.set('gpt_image_key', getVal('caa-setting-gpt-image-key'));
     Storage.set('gpt_image_url', getVal('caa-setting-gpt-image-url'));
+    Storage.set('gpt_image_model', getVal('caa-setting-gpt-image-model'));
     Storage.set('unsplash_key', getVal('caa-setting-unsplash-key'));
     // 服务器模式
     Storage.set('use_server', getVal('caa-setting-use-server') === '1');
