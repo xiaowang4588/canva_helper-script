@@ -956,16 +956,19 @@
 
   /**
    * GPT-image-2 图片生成（直连中转站，用于调试）
-   * 使用 OpenAI 兼容的 /v1/images/generations 接口
+   *
+   * 使用 /v1/chat/completions 端点（非 /v1/images/generations）。
+   * GPT-image-2 通过 chat 接口返回图片 URL。
+   *
    * @param {string} apiKey  - 中转站 API Key
    * @param {string} apiUrl  - 中转站地址，如 https://your-relay.com/v1
    * @param {string} prompt  - 图片描述
    * @param {string} size    - 图片尺寸
    */
   function generateGptImage2(apiKey, apiUrl, prompt, size = '1024x1024') {
-    const url = (apiUrl || 'https://api.openai.com/v1').replace(/\/+$/, '') + '/images/generations';
+    const url = (apiUrl || 'https://api.openai.com/v1').replace(/\/+$/, '') + '/chat/completions';
 
-    console.log('[CAA] GPT-image-2 直连: ' + url);
+    console.log('[CAA] GPT-image-2 chat: ' + url);
 
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
@@ -977,28 +980,71 @@
         },
         data: JSON.stringify({
           model: 'gpt-image-2',
-          prompt: prompt,
-          n: 1,
-          size: size,
+          messages: [
+            {
+              role: 'user',
+              content: `请根据以下描述生成一张图片，输出图片的URL地址：\n${prompt}\n\n图片尺寸要求：${size}`
+            }
+          ],
+          max_tokens: 4096,
         }),
         onload: function (resp) {
           try {
             const data = JSON.parse(resp.responseText);
-            if (data.data && data.data.length > 0) {
-              resolve(data.data.map(d => d.url || d.b64_json));
-            } else if (data.error) {
+            if (data.error) {
               reject(new Error(data.error.message || 'GPT-image-2 生成失败'));
+              return;
+            }
+            // 从 chat completion 响应中提取图片 URL
+            let content = '';
+            if (data.choices && data.choices[0]) {
+              content = data.choices[0].message?.content || '';
+            }
+            if (!content) {
+              reject(new Error('GPT-image-2 返回内容为空'));
+              return;
+            }
+            // 尝试从返回内容中提取 URL（支持 Markdown 图片、纯 URL、data URI）
+            const urls = [];
+            // 匹配 Markdown 图片: ![alt](url)
+            const mdImgRegex = /!\[.*?\]\((https?:\/\/[^\s)]+)\)/g;
+            let match;
+            while ((match = mdImgRegex.exec(content)) !== null) {
+              urls.push(match[1]);
+            }
+            // 匹配纯 URL（以 http 开头、常见图片域名/格式）
+            if (urls.length === 0) {
+              const urlRegex = /(https?:\/\/[^\s"']+\.(?:png|jpg|jpeg|gif|webp)[^\s"']*)/gi;
+              while ((match = urlRegex.exec(content)) !== null) {
+                urls.push(match[1]);
+              }
+            }
+            // 匹配 data URI 中的 base64 图片
+            if (urls.length === 0) {
+              const dataUriRegex = /(data:image\/[^"'\s]+)/gi;
+              while ((match = dataUriRegex.exec(content)) !== null) {
+                urls.push(match[1]);
+              }
+            }
+            if (urls.length > 0) {
+              resolve(urls);
             } else {
-              reject(new Error('GPT-image-2 返回为空'));
+              // 如果内容本身看起来像一个 URL，直接使用
+              const trimmed = content.trim();
+              if (/^https?:\/\//.test(trimmed)) {
+                resolve([trimmed]);
+              } else {
+                reject(new Error('未能从 GPT-image-2 返回中提取图片 URL'));
+              }
             }
           } catch (e) {
-            reject(new Error('解析 GPT-image-2 响应失败'));
+            reject(new Error('解析 GPT-image-2 响应失败: ' + e.message));
           }
         },
         onerror: function (err) {
           reject(new Error('GPT-image-2 请求失败: ' + (err?.statusText || '网络错误')));
         },
-        timeout: 90000,
+        timeout: 120000,
       });
     });
   }
