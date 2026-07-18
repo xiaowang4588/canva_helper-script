@@ -677,6 +677,8 @@
         anthropic_key: this.get('anthropic_key', ''),
         anthropic_model: this.get('anthropic_model', 'claude-sonnet-5-20251001'),
         image_service: this.get('image_service', 'openai'),
+        gpt_image_key: this.get('gpt_image_key', ''),
+        gpt_image_url: this.get('gpt_image_url', 'https://api.openai.com/v1'),
         stability_key: this.get('stability_key', ''),
         unsplash_key: this.get('unsplash_key', ''),
         primary_text_ai: this.get('primary_text_ai', 'openai'),
@@ -952,6 +954,55 @@
     });
   }
 
+  /**
+   * GPT-image-2 图片生成（直连中转站，用于调试）
+   * 使用 OpenAI 兼容的 /v1/images/generations 接口
+   * @param {string} apiKey  - 中转站 API Key
+   * @param {string} apiUrl  - 中转站地址，如 https://your-relay.com/v1
+   * @param {string} prompt  - 图片描述
+   * @param {string} size    - 图片尺寸
+   */
+  function generateGptImage2(apiKey, apiUrl, prompt, size = '1024x1024') {
+    const url = (apiUrl || 'https://api.openai.com/v1').replace(/\/+$/, '') + '/images/generations';
+
+    console.log('[CAA] GPT-image-2 直连: ' + url);
+
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        data: JSON.stringify({
+          model: 'gpt-image-2',
+          prompt: prompt,
+          n: 1,
+          size: size,
+        }),
+        onload: function (resp) {
+          try {
+            const data = JSON.parse(resp.responseText);
+            if (data.data && data.data.length > 0) {
+              resolve(data.data.map(d => d.url || d.b64_json));
+            } else if (data.error) {
+              reject(new Error(data.error.message || 'GPT-image-2 生成失败'));
+            } else {
+              reject(new Error('GPT-image-2 返回为空'));
+            }
+          } catch (e) {
+            reject(new Error('解析 GPT-image-2 响应失败'));
+          }
+        },
+        onerror: function (err) {
+          reject(new Error('GPT-image-2 请求失败: ' + (err?.statusText || '网络错误')));
+        },
+        timeout: 90000,
+      });
+    });
+  }
+
   // Stability AI 图片生成
   function generateStabilityImage(apiKey, prompt, width = 1024, height = 1024) {
     return new Promise((resolve, reject) => {
@@ -1151,10 +1202,10 @@
    * 服务器图片生成
    * 非流式调用 /api/image，返回 JSON { urls: [...] }
    */
-  function generateServerImage(serverUrl, serverToken, prompt, size) {
+  function generateServerImage(serverUrl, serverToken, prompt, size, model) {
     const url = serverUrl.replace(/\/+$/, '') + '/api/image';
 
-    console.log('[CAA] 🌐 服务器图片: ' + url);
+    console.log('[CAA] 🌐 服务器图片: ' + url + ' model=' + (model || 'dall-e-3'));
 
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
@@ -1167,6 +1218,7 @@
         data: JSON.stringify({
           prompt: prompt,
           size: size || '1024x1024',
+          model: model || 'dall-e-3',
         }),
         onload: function (resp) {
           try {
@@ -1817,9 +1869,12 @@
 
         let urls = [];
         if (useServer) {
-          // 服务器模式：由服务器中转调用 DALL-E
+          // 服务器模式：由服务器根据 model 参数选择调用目标
           const size = sizeSelect ? sizeSelect.value : '1024x1024';
-          urls = await generateServerImage(settings.server_url, settings.server_token, prompt, size);
+          // 将客户端的 image_service 转为实际模型名传给服务器
+          const svcToModel = { 'openai': 'dall-e-3', 'stability': 'dall-e-3', 'gpt-image-2': 'gpt-image-2' };
+          const imageModel = svcToModel[settings.image_service] || 'dall-e-3';
+          urls = await generateServerImage(settings.server_url, settings.server_token, prompt, size, imageModel);
         } else {
           // 直连模式
           const service = settings.image_service;
@@ -1829,13 +1884,19 @@
           if (service === 'stability' && !settings.stability_key) {
             throw new Error('请先在设置中配置 Stability AI API Key 或启用服务器模式');
           }
+          if (service === 'gpt-image-2' && !settings.gpt_image_key) {
+            throw new Error('请先在设置中配置 GPT-image-2 API Key 或启用服务器模式');
+          }
+
+          const size = sizeSelect ? sizeSelect.value : '1024x1024';
 
           if (service === 'openai') {
-            const size = sizeSelect ? sizeSelect.value : '1024x1024';
             urls = await generateDalleImage(settings.openai_key, prompt, size);
           } else if (service === 'stability') {
-            const [w, h] = (sizeSelect?.value || '1024x1024').split('x').map(Number);
+            const [w, h] = size.split('x').map(Number);
             urls = await generateStabilityImage(settings.stability_key, prompt, w, h);
+          } else if (service === 'gpt-image-2') {
+            urls = await generateGptImage2(settings.gpt_image_key, settings.gpt_image_url, prompt, size);
           }
         }
 
@@ -2025,9 +2086,15 @@
       createSettingsField('图片服务', 'caa-setting-image-service', 'select', settings.image_service, null, [
         { id: 'openai', name: 'DALL-E 3' },
         { id: 'stability', name: 'Stability AI' },
+        { id: 'gpt-image-2', name: 'GPT-image-2 (中转站)' },
       ]),
       createSettingsField('Stability AI Key (如使用)', 'caa-setting-stability-key', 'password', settings.stability_key,
         'sk-...'),
+      // GPT-image-2 配置（直连调试用）
+      createSettingsField('GPT-image-2 Key (调试用)', 'caa-setting-gpt-image-key', 'password', settings.gpt_image_key,
+        'sk-...'),
+      createSettingsField('GPT-image-2 API 地址', 'caa-setting-gpt-image-url', 'text', settings.gpt_image_url,
+        'https://your-relay.com/v1'),
     ]));
 
     // Unsplash 配置
@@ -2096,6 +2163,8 @@
     Storage.set('primary_design_ai', getVal('caa-setting-design-ai'));
     Storage.set('image_service', getVal('caa-setting-image-service'));
     Storage.set('stability_key', getVal('caa-setting-stability-key'));
+    Storage.set('gpt_image_key', getVal('caa-setting-gpt-image-key'));
+    Storage.set('gpt_image_url', getVal('caa-setting-gpt-image-url'));
     Storage.set('unsplash_key', getVal('caa-setting-unsplash-key'));
     // 服务器模式
     Storage.set('use_server', getVal('caa-setting-use-server') === '1');
