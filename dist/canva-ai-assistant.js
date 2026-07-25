@@ -680,6 +680,8 @@
         gpt_image_key: this.get('gpt_image_key', ''),
         gpt_image_url: this.get('gpt_image_url', 'https://api.openai.com/v1'),
         gpt_image_model: this.get('gpt_image_model', 'gpt-image-2'),
+        shuaiapi_key: this.get('shuaiapi_key', ''),
+        shuaiapi_model: this.get('shuaiapi_model', 'gpt-image-1'),
         stability_key: this.get('stability_key', ''),
         unsplash_key: this.get('unsplash_key', ''),
         primary_text_ai: this.get('primary_text_ai', 'openai'),
@@ -951,6 +953,56 @@
           reject(new Error('DALL-E 请求失败: ' + (err?.statusText || '网络错误')));
         },
         timeout: 60000,
+      });
+    });
+  }
+
+  /**
+   * 帅API 图片生成（兼容 DALL-E 接口格式）
+   *
+   * 使用 /v1/images/generations 端点，返回 url 字段（1小时有效期）
+   * @param {string} apiKey  - 帅API Key
+   * @param {string} model   - 模型名，如 gpt-image-1
+   * @param {string} prompt  - 图片描述
+   * @param {string} size    - 图片尺寸
+   */
+  function generateShuaiApiImage(apiKey, model, prompt, size = '1024x1024') {
+    const url = 'https://api.shuaiapi.com/v1/images/generations';
+
+    console.log('[CAA] 帅API: ' + url + ' model=' + model);
+
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        data: JSON.stringify({
+          model: model || 'gpt-image-1',
+          prompt: prompt,
+          size: size,
+          response_format: 'url',
+        }),
+        onload: function (resp) {
+          try {
+            const data = JSON.parse(resp.responseText);
+            if (data.data && data.data.length > 0) {
+              resolve(data.data.map(d => d.url).filter(Boolean));
+            } else if (data.error) {
+              reject(new Error(data.error.message || '帅API 生成失败'));
+            } else {
+              reject(new Error('帅API 返回为空'));
+            }
+          } catch (e) {
+            reject(new Error('解析帅API响应失败: ' + e.message));
+          }
+        },
+        onerror: function (err) {
+          reject(new Error('帅API 请求失败: ' + (err?.statusText || '网络错误')));
+        },
+        timeout: 90000,
       });
     });
   }
@@ -1935,6 +1987,9 @@
           if (service === 'gpt-image-2' && !settings.gpt_image_key) {
             throw new Error('请先在设置中配置 GPT-image-2 API Key 或启用服务器模式');
           }
+          if (service === 'shuaiapi' && !settings.shuaiapi_key) {
+            throw new Error('请先在设置中配置帅API Key 或启用服务器模式');
+          }
 
           const size = sizeSelect ? sizeSelect.value : '1024x1024';
 
@@ -1945,6 +2000,8 @@
             urls = await generateStabilityImage(settings.stability_key, prompt, w, h);
           } else if (service === 'gpt-image-2') {
             urls = await generateGptImage2(settings.gpt_image_key, settings.gpt_image_url, settings.gpt_image_model, prompt, size);
+          } else if (service === 'shuaiapi') {
+            urls = await generateShuaiApiImage(settings.shuaiapi_key, settings.shuaiapi_model, prompt, size);
           }
         }
 
@@ -2135,6 +2192,7 @@
         { id: 'openai', name: 'DALL-E 3' },
         { id: 'stability', name: 'Stability AI' },
         { id: 'gpt-image-2', name: 'GPT-image-2 (中转站)' },
+        { id: 'shuaiapi', name: '帅API (推荐)' },
       ]),
       createSettingsField('Stability AI Key (如使用)', 'caa-setting-stability-key', 'password', settings.stability_key,
         'sk-...'),
@@ -2145,6 +2203,11 @@
         'https://ruoli.dev/v1'),
       createSettingsField('GPT-image-2 模型名', 'caa-setting-gpt-image-model', 'text', settings.gpt_image_model,
         'gpt-image-2'),
+      // 帅API 配置
+      createSettingsField('帅API Key', 'caa-setting-shuaiapi-key', 'password', settings.shuaiapi_key,
+        'sk-...'),
+      createSettingsField('帅API 模型名', 'caa-setting-shuaiapi-model', 'text', settings.shuaiapi_model,
+        'gpt-image-1'),
     ]));
 
     // Unsplash 配置
@@ -2216,6 +2279,8 @@
     Storage.set('gpt_image_key', getVal('caa-setting-gpt-image-key'));
     Storage.set('gpt_image_url', getVal('caa-setting-gpt-image-url'));
     Storage.set('gpt_image_model', getVal('caa-setting-gpt-image-model'));
+    Storage.set('shuaiapi_key', getVal('caa-setting-shuaiapi-key'));
+    Storage.set('shuaiapi_model', getVal('caa-setting-shuaiapi-model'));
     Storage.set('unsplash_key', getVal('caa-setting-unsplash-key'));
     // 服务器模式
     Storage.set('use_server', getVal('caa-setting-use-server') === '1');
