@@ -2293,8 +2293,9 @@
     Storage.set('server_url', getVal('caa-setting-server-url'));
     Storage.set('server_token', getVal('caa-setting-server-token'));
 
-    // 重新加载设置到内存
-    Settings.load();
+    // 重新加载设置到内存（更新 settings 对象）
+    // Storage 没有 load() 方法，settings 是通过 defaults() 每次调用时从 GM storage 读取的
+    // 所以保存后不需要额外操作，下次调用 Storage.defaults() 时会自动读取新值
 
     showToast('✅ 设置已保存');
 
