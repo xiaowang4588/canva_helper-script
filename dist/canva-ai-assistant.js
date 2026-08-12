@@ -2254,6 +2254,12 @@
         placeholder: placeholder || '',
         ...(type === 'password' ? { autocomplete: 'off' } : {}),
       });
+      // 确保粘贴事件能正确触发 input 事件
+      inputEl.addEventListener('paste', function(e) {
+        setTimeout(() => {
+          inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }, 0);
+      });
     }
 
     return createElement('div', { className: 'caa-settings-field' }, [
@@ -2286,6 +2292,9 @@
     Storage.set('use_server', getVal('caa-setting-use-server') === '1');
     Storage.set('server_url', getVal('caa-setting-server-url'));
     Storage.set('server_token', getVal('caa-setting-server-token'));
+
+    // 重新加载设置到内存
+    Settings.load();
 
     showToast('✅ 设置已保存');
 
